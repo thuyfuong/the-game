@@ -3,85 +3,137 @@ import sys
 import random
 
 
-def draw_snake(surface, snake_blocks, block_size):
-    """Рисует змею на экране."""
-    for block in snake_blocks:
+class GameObject:
+    """Базовый класс для игровых объектов."""
+
+    def __init__(self, position, color):
+        """Инициализация позиции и цвета объекта."""
+        self.position = position
+        self.color = color
+
+    def draw(self, surface, block_size):
+        """Рисует объект на экране. Переопределяется в наследниках."""
+        pass
+
+
+class Apple(GameObject):
+    """Класс для яблока."""
+
+    def __init__(self, width, height, block_size):
+        """Создание яблока с случайной позицией."""
+        super().__init__((0, 0), (255, 0, 0))
+        self.width = width
+        self.height = height
+        self.block_size = block_size
+        self.randomize_position()
+
+    def randomize_position(self):
+        """Случайная позиция яблока на поле."""
+        self.position = (
+            random.randrange(0, self.width, self.block_size),
+            random.randrange(0, self.height, self.block_size)
+        )
+
+    def draw(self, surface, block_size):
+        """Рисует яблоко."""
         pygame.draw.rect(
-            surface,
-            (0, 255, 0),
-            (block[0], block[1], block_size, block_size)
+            surface, self.color,
+            (self.position[0], self.position[1], block_size, block_size)
         )
 
 
-def draw_food(surface, food_pos, block_size):
-    """Рисует еду на экране."""
-    pygame.draw.rect(
-        surface,
-        (255, 0, 0),
-        (food_pos[0], food_pos[1], block_size, block_size)
-    )
+class Snake(GameObject):
+    """Класс для змеи."""
 
+    def __init__(self, start_pos, block_size, width, height):
+        """Инициализация змеи."""
+        super().__init__(start_pos, (0, 255, 0))
+        self.block_size = block_size
+        self.width = width
+        self.height = height
+        self.length = 1
+        self.positions = [start_pos]
+        self.direction = "RIGHT"
+        self.next_direction = None
+        self.last = None
 
-def move_snake(direction, snake_blocks, block_size):
-    """Обновляет позицию змеи в зависимости от направления движения."""
-    head_x, head_y = snake_blocks[0]
+    def get_head_position(self):
+        """Возвращает координаты головы змеи."""
+        return self.positions[0]
 
-    if direction == "UP":
-        head_y -= block_size
-    elif direction == "DOWN":
-        head_y += block_size
-    elif direction == "LEFT":
-        head_x -= block_size
-    elif direction == "RIGHT":
-        head_x += block_size
+    def update_direction(self):
+        """Обновляет направление движения змеи."""
+        if self.next_direction:
+            self.direction = self.next_direction
+            self.next_direction = None
 
-    new_head = (head_x, head_y)
-    snake_blocks.insert(0, new_head)
-    snake_blocks.pop()
+    def move(self):
+        """Двигает змею, увеличивает длину при необходимости."""
+        head_x, head_y = self.get_head_position()
+        if self.direction == "UP":
+            head_y -= self.block_size
+        elif self.direction == "DOWN":
+            head_y += self.block_size
+        elif self.direction == "LEFT":
+            head_x -= self.block_size
+        elif self.direction == "RIGHT":
+            head_x += self.block_size
 
-    return snake_blocks
+        # Проход через стены
+        head_x %= self.width
+        head_y %= self.height
 
+        new_head = (head_x, head_y)
+        if new_head in self.positions[1:]:
+            self.reset()
+        else:
+            self.positions.insert(0, new_head)
+            if len(self.positions) > self.length:
+                self.last = self.positions.pop()
+            else:
+                self.last = None
 
-def check_collision(snake_blocks, width, height):
-    """Проверяет столкновение змеи со стеной или самой собой."""
-    head = snake_blocks[0]
+    def draw(self, surface, block_size):
+        """Рисует змею и очищает последний блок."""
+        for pos in self.positions:
+            pygame.draw.rect(surface, self.color,
+                             (pos[0], pos[1], block_size, block_size))
+        if self.last:
+            pygame.draw.rect(surface, (0, 0, 0),
+                             (self.last[0], self.last[1], block_size, block_size))
 
-    if head[0] < 0 or head[0] >= width:
-        return True
-    if head[1] < 0 or head[1] >= height:
-        return True
-    if head in snake_blocks[1:]:
-        return True
+    def reset(self):
+        """Сбрасывает змею после столкновения."""
+        self.length = 1
+        self.positions = [((self.width // 2), (self.height // 2))]
+        self.direction = "RIGHT"
+        self.next_direction = None
+        self.last = None
 
-    return False
-
-
-def spawn_food(width, height, block_size, snake_blocks):
-    """Создает еду в случайной позиции, не совпадающей с телом змеи."""
-    while True:
-        x = random.randrange(0, width, block_size)
-        y = random.randrange(0, height, block_size)
-        if (x, y) not in snake_blocks:
-            return (x, y)
+    def handle_keys(self, event):
+        """Обработка нажатий клавиш."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP and self.direction != "DOWN":
+                self.next_direction = "UP"
+            elif event.key == pygame.K_DOWN and self.direction != "UP":
+                self.next_direction = "DOWN"
+            elif event.key == pygame.K_LEFT and self.direction != "RIGHT":
+                self.next_direction = "LEFT"
+            elif event.key == pygame.K_RIGHT and self.direction != "LEFT":
+                self.next_direction = "RIGHT"
 
 
 def main():
-    """Главная функция запуска игры Snake."""
+    """Главная функция игры Snake."""
     pygame.init()
-
-    width = 600
-    height = 400
+    width, height = 640, 480
     block_size = 20
-
     screen = pygame.display.set_mode((width, height))
-    pygame.display.set_caption("Змейка — PEP8 Edition")
+    pygame.display.set_caption("Змейка — Полная версия")
 
     clock = pygame.time.Clock()
-
-    snake_blocks = [(100, 100), (80, 100), (60, 100)]
-    direction = "RIGHT"
-
-    food_pos = spawn_food(width, height, block_size, snake_blocks)
+    snake = Snake((width // 2, height // 2), block_size, width, height)
+    apple = Apple(width, height, block_size)
 
     score = 0
     font = pygame.font.SysFont("arial", 24)
@@ -91,31 +143,20 @@ def main():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            snake.handle_keys(event)
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP and direction != "DOWN":
-                    direction = "UP"
-                elif event.key == pygame.K_DOWN and direction != "UP":
-                    direction = "DOWN"
-                elif event.key == pygame.K_LEFT and direction != "RIGHT":
-                    direction = "LEFT"
-                elif event.key == pygame.K_RIGHT and direction != "LEFT":
-                    direction = "RIGHT"
+        snake.update_direction()
+        snake.move()
 
-        snake_blocks = move_snake(direction, snake_blocks, block_size)
-
-        if check_collision(snake_blocks, width, height):
-            pygame.quit()
-            sys.exit()
-
-        if snake_blocks[0] == food_pos:
-            snake_blocks.append(snake_blocks[-1])
-            food_pos = spawn_food(width, height, block_size, snake_blocks)
+        # Проверка поедания яблока
+        if snake.get_head_position() == apple.position:
+            snake.length += 1
+            apple.randomize_position()
             score += 1
 
         screen.fill((0, 0, 0))
-        draw_snake(screen, snake_blocks, block_size)
-        draw_food(screen, food_pos, block_size)
+        snake.draw(screen, block_size)
+        apple.draw(screen, block_size)
 
         score_text = font.render(f"Счет: {score}", True, (255, 255, 255))
         screen.blit(score_text, (10, 10))
